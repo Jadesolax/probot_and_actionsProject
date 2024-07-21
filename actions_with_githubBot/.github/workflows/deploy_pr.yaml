@@ -1,0 +1,39 @@
+name: Deploy PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v1
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Build and push Docker image
+      if: github.event.action != 'closed'
+      run: |
+        docker build -t myapp:${{ github.event.number }}-${{ github.sha }} .
+        docker tag myapp:${{ github.event.number }}-${{ github.sha }} myregistry/myapp:${{ github.event.number }}-${{ github.sha }}
+        docker push myregistry/myapp:${{ github.event.number }}-${{ github.sha }}
+
+    - name: Deploy container
+      if: github.event.action != 'closed'
+      run: |
+        docker run -d --name pr-${{ github.event.number }} -p 8080:80 myregistry/myapp:${{ github.event.number }}-${{ github.sha }}
+
+    - name: Clean up containers
+      if: github.event.action == 'closed'
+      run: |
+        docker rm -f pr-${{ github.event.number }}
